@@ -1,6 +1,7 @@
 # Human-Tracks-Project: Digital Provenance & Metadata Loopback
 
 The Mission
+
 To provide an ironclad, mechanical "Proof of Work" for professional musicians working with AI-generated audio seeds. This project delineates years of human musicianship from low-effort AI "slop" by establishing a cryptographically signed chain of custody from the initial audio seed to the final master export.
 
 # Digital Provenance & Metadata Loopback Tool
