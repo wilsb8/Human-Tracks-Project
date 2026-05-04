@@ -2,60 +2,108 @@
 
 ## The Mission
 
-To provide an ironclad, mechanical "Proof of Work" for professional musicians working with AI-generated audio seeds. This project delineates 42 years of human musicianship from low-effort AI "slop" by establishing a cryptographically signed chain of custody from the initial audio seed to the final master export.
+An ironclad, mechanical Proof of Work for professional musicians working with AI-generated audio seeds. This project delineates 42 years of human musicianship from low-effort AI "slop" by establishing a cryptographically signed chain of custody from the initial audio seed to the final master export.
 
-## Why This Matters
+For professionals facing label/distributor scrutiny, this provides:
 
-For professionals facing label/distributor scrutiny, this tool provides:
-
-Legal Protection: Verifiable proof of hybrid authorship for copyright and contract compliance.  
-
-Technical Integrity: No degradation of audio quality; the tool only touches file metadata headers.  
-
-Forensic Evidence: A signed manifest that objectively silences critics by proving the hours of human labor recorded in the DAW.
-
-## How It Works
-
-The tool functions as a "Black Box" flight recorder for your production process:
-
-- **Module 0: Pre-Stamp** — Registers your creative intent before generation, assigning a unique Handshake ID to the project.
-- **Module 1: Seed Extractor** — Scans the resulting Suno file to extract the unique Seed ID and origin timestamp while stripping subjective metadata.
-- **Module 2: DAW Auditor** — Parses Logic Pro 11 session data to objectively classify tracks as Human-Led (recorded audio) or Seed.
-- **Module 3: Loopback Engine** — Marries the seed identity to the session audit, verifying that human labor was the primary driver of the final track.
-- **Module 4: C2PA Signer** — Bakes the entire provenance record into a signed C2PA manifest embedded in the final master.
+- **Legal protection** — verifiable proof of hybrid authorship for copyright and contract compliance
+- **Technical integrity** — no degradation of audio quality; only file metadata headers are touched
+- **Forensic evidence** — a signed manifest that objectively proves the hours of human labor recorded in the DAW
 
 ## Prerequisites
 
 - Python 3.10+
 - macOS (required for `.logicx` bundle access)
+- A signing certificate and private key (ES256) — see [Certificate Setup](#certificate-setup) below
 - [c2patool](https://github.com/contentauth/c2pa-rs) (for verification only)
 
 ## Installation
 
 ```bash
-# Clone and install
 git clone <repo-url> && cd project-suno
 pip3 install -e .
 ```
 
-This installs the `provenance-tool` CLI and its two dependencies (`mutagen`, `c2pa-python`).
+---
 
-## Quick Start
+## Where Are You in the Process?
 
-### Workflow B: Pre-Register → Suno → Post-Pipeline
+### I haven't uploaded to Suno yet — I have my own audio I want to protect
 
-If **your audio is the seed** that you're handing to Suno:
+Run this **before** uploading your file to Suno. It fingerprints your audio and creates a timestamped receipt proving the file existed before Suno touched it.
 
+**Step 1 — Fingerprint your original audio:**
 ```bash
-# BEFORE uploading to Suno — fingerprint your original audio
 provenance-tool pre-register my_recording.wav > pre_reg.json
-# → save pre_reg.json, then upload my_recording.wav to Suno
 ```
 
-After Suno returns its output and you've built on it in Logic Pro:
+Save `pre_reg.json`. Then upload `my_recording.wav` to Suno.
+
+When Suno returns its output and you've finished your session in Logic Pro, continue with the steps in the next section and include `--pre-reg pre_reg.json` in the final sign step.
+
+---
+
+### I have my Suno output and my Logic Pro session is finished
+
+Run these steps in order. Each command writes a JSON file that feeds into the next.
+
+**Step 1 — Extract provenance data from the Suno file:**
+```bash
+provenance-tool seed-extract suno_output.mp3 > seed.json
+```
+
+This reads the Suno MP3 or WAV, strips any subjective metadata, computes a SHA-256 fingerprint, and records the origin timestamp.
+
+**Step 2 — Audit your Logic Pro session:**
+```bash
+provenance-tool daw-audit Session.logicx \
+  --seed-hash $(python3 -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" suno_output.mp3) \
+  > session.json
+```
+
+This scans the `.logicx` bundle and classifies every track as `seed`, `human_led`, or `programmed` based on what audio and MIDI data is present.
+
+**Step 3 — Build the provenance record:**
+```bash
+# Without pre-registration (Suno export was your starting point)
+provenance-tool loopback --seed seed.json --session session.json > provenance.json
+
+# With pre-registration (you fingerprinted your audio before Suno)
+provenance-tool loopback --seed seed.json --session session.json --pre-reg pre_reg.json > provenance.json
+```
+
+This links the seed fingerprint to the session audit and computes a deterministic `loopback_id`.
+
+**Step 4 — Sign the master:**
+```bash
+provenance-tool sign \
+  --master      final_master.wav \
+  --seed-audio  suno_output.mp3 \
+  --provenance  provenance.json \
+  --cert        certs/es256_certs.pem \
+  --key         certs/es256_private.key \
+  --output      signed_master.wav
+```
+
+This embeds the full provenance record into the master file as a cryptographically signed C2PA manifest. The original audio quality is untouched.
+
+---
+
+### I want to run the full pipeline in one command
+
+If you don't need to inspect intermediate JSON files, you can run everything at once:
 
 ```bash
-# Full post-pipeline with pre-registration receipt attached
+# Without pre-registration
+provenance-tool run \
+  --seed-audio  suno_output.mp3 \
+  --logicx      Session.logicx \
+  --master      final_master.wav \
+  --cert        certs/es256_certs.pem \
+  --key         certs/es256_private.key \
+  --output      signed_master.wav
+
+# With pre-registration receipt
 provenance-tool run \
   --seed-audio  suno_output.mp3 \
   --logicx      Session.logicx \
@@ -66,115 +114,17 @@ provenance-tool run \
   --pre-reg     pre_reg.json
 ```
 
-The signed master's C2PA manifest will include both the pre-registration receipt (proving your audio pre-dates Suno) and the session audit.
+---
 
-### Workflow A: Post-Suno Only
-
-If the **Suno export is the starting point** (no prior audio to register):
-
-```bash
-provenance-tool run \
-  --seed-audio  suno_export.mp3 \
-  --logicx      Session.logicx \
-  --master      final_master.wav \
-  --cert        certs/es256_certs.pem \
-  --key         certs/es256_private.key \
-  --output      signed_master.wav
-```
-
-### Step-by-Step (manual pipeline)
-
-```bash
-# 0. (Optional) Pre-register your audio before Suno
-provenance-tool pre-register my_recording.wav > pre_reg.json
-
-# 1. Extract seed metadata from the Suno output
-provenance-tool seed-extract suno_output.mp3 > seed.json
-
-# 2. Audit the Logic Pro session
-HASH=$(python3 -c "import hashlib,sys; h=hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest(); print(h)" suno_output.mp3)
-provenance-tool daw-audit Session.logicx --seed-hash "$HASH" > session.json
-
-# 3. Build the provenance record (attach pre-reg if you have one)
-provenance-tool loopback --seed seed.json --session session.json --pre-reg pre_reg.json > provenance.json
-
-# 4. Sign the master
-provenance-tool sign \
-  --master      final_master.wav \
-  --seed-audio  suno_output.mp3 \
-  --provenance  provenance.json \
-  --cert        certs/es256_certs.pem \
-  --key         certs/es256_private.key \
-  --output      signed_master.wav
-```
-
-### Verify a Signed Master
+### I want to verify a signed master
 
 ```bash
 c2patool signed_master.wav
 ```
 
-The output includes the `com.provenance.music.loopback` assertion with the full provenance record (seed ID, track counts, session metadata).
+The output will contain the `com.provenance.music.loopback` assertion with the full provenance record — seed ID, track classification counts, session metadata, and timestamp.
 
-## C2PA Environment Setup
-
-The signing step requires an X.509 certificate and private key. Below are instructions for generating a **development** keypair and for obtaining a **production** certificate.
-
-### Development (self-signed, testing only)
-
-```bash
-mkdir -p certs && cd certs
-
-# Generate an ES256 private key
-openssl ecparam -name prime256v1 -genkey -noout -out es256_private.key
-
-# Generate a self-signed certificate (valid 365 days)
-openssl req -new -x509 -key es256_private.key \
-  -out es256_certs.pem -days 365 \
-  -subj "/CN=Provenance Tool Dev/O=Dev"
-
-cd ..
-```
-
-> **Note:** Self-signed certificates will produce manifests that validate structurally but show as "untrusted" in C2PA verifiers like [Content Credentials Verify](https://contentcredentials.org/verify). This is expected for development.
-
-### Production
-
-For manifests that validate on the [C2PA Trust List](https://opensource.contentauthenticity.org/docs/conformance/trust-lists):
-
-1. **Obtain a certificate** from a C2PA-recognized Certificate Authority. Options include:
-   - [GlobalSign](https://www.globalsign.com/) — issues Content Credentials signing certificates
-   - [DigiCert](https://www.digicert.com/) — provides timestamping and signing services
-   - Any CA whose root is on the C2PA Trust List
-
-2. **Place files** in your project:
-   ```
-   certs/
-   ├── es256_certs.pem      # Full certificate chain (leaf + intermediates)
-   └── es256_private.key    # Corresponding private key
-   ```
-
-3. **Add a timestamp authority** for long-term validity:
-   ```bash
-   provenance-tool run \
-     --seed-audio suno_export.mp3 \
-     --logicx     Session.logicx \
-     --master     final_master.wav \
-     --cert       certs/es256_certs.pem \
-     --key        certs/es256_private.key \
-     --output     signed_master.wav \
-     --ta-url     http://timestamp.digicert.com
-   ```
-
-### Installing c2patool (for verification)
-
-```bash
-# macOS via Homebrew
-brew install c2patool
-
-# Or download a prebuilt binary from:
-# https://github.com/contentauth/c2pa-rs/releases
-```
+---
 
 ## What Gets Embedded
 
@@ -216,18 +166,39 @@ The signed master contains a C2PA manifest with two assertions:
 
 No subjective data (track names, lyrics, plugin names, artist info) is included — only mechanical provenance.
 
-## Project Structure
+---
 
+## Certificate Setup
+
+The signing step requires an X.509 ES256 certificate and private key.
+
+### Development (self-signed, for testing)
+
+```bash
+mkdir -p certs
+
+openssl ecparam -name prime256v1 -genkey -noout -out certs/es256_private.key
+
+openssl req -new -x509 -key certs/es256_private.key \
+  -out certs/es256_certs.pem -days 365 \
+  -subj "/CN=Provenance Dev/O=Dev"
 ```
-src/provenance/
-├── schemas.py           # TypedDict contracts for all data flowing between modules
-├── pre_register.py      # Fingerprints your audio before Suno upload
-├── seed_extractor.py    # Parses Suno MP3/WAV metadata (ID3 + RIFF), computes seed ID
-├── daw_auditor.py       # Parses .logicx bundles (plist + binary FourCC scanning)
-├── loopback_engine.py   # Marries seed ↔ session (+pre-reg), computes loopback ID
-├── c2pa_signer.py       # Builds and signs C2PA manifest via c2pa-python
-└── cli.py               # CLI entry point with subcommands
+
+> Self-signed certificates validate structurally but show as "untrusted" in public C2PA verifiers like [Content Credentials Verify](https://contentcredentials.org/verify). This is expected for development.
+
+### Production
+
+For manifests that validate on the [C2PA Trust List](https://opensource.contentauthenticity.org/docs/conformance/trust-lists), obtain a certificate from a recognized CA such as [GlobalSign](https://www.globalsign.com/) or [DigiCert](https://www.digicert.com/). Place the files at `certs/es256_certs.pem` (full chain) and `certs/es256_private.key`.
+
+To add a trusted timestamp for long-term validity, append `--ta-url http://timestamp.digicert.com` to any `sign` or `run` command.
+
+### Installing c2patool (verification only)
+
+```bash
+brew install c2patool
 ```
+
+---
 
 ## Running Tests
 
@@ -236,6 +207,6 @@ pip3 install pytest
 PYTHONPATH=src python3 -m pytest tests/ -v
 ```
 
-## Rules
+## Reference
 
-See [PRODUCT.md](PRODUCT.md) for the full product specification and [AGENTS.md](AGENTS.md) for development constraints and data-handling rules.
+See [PRODUCT.md](PRODUCT.md) for the full technical specification and [AGENTS.md](AGENTS.md) for data-handling rules and development constraints.
