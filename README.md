@@ -4,6 +4,16 @@
 
 To provide an ironclad, mechanical "Proof of Work" for professional musicians working with AI-generated audio seeds. This project delineates 42 years of human musicianship from low-effort AI "slop" by establishing a cryptographically signed chain of custody from the initial audio seed to the final master export.
 
+## Why This Matters
+
+For professionals facing label/distributor scrutiny, this tool provides:
+
+Legal Protection: Verifiable proof of hybrid authorship for copyright and contract compliance.  
+
+Technical Integrity: No degradation of audio quality; the tool only touches file metadata headers.  
+
+Forensic Evidence: A signed manifest that objectively silences critics by proving the hours of human labor recorded in the DAW.
+
 ## How It Works
 
 The tool functions as a "Black Box" flight recorder for your production process:
