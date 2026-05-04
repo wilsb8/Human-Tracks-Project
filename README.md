@@ -26,35 +26,66 @@ This installs the `provenance-tool` CLI and its two dependencies (`mutagen`, `c2
 
 ## Quick Start
 
-### Full Pipeline (single command)
+### Workflow B: Pre-Register → Suno → Post-Pipeline
+
+If **your audio is the seed** that you're handing to Suno:
+
+```bash
+# BEFORE uploading to Suno — fingerprint your original audio
+provenance-tool pre-register my_recording.wav > pre_reg.json
+# → save pre_reg.json, then upload my_recording.wav to Suno
+```
+
+After Suno returns its output and you've built on it in Logic Pro:
+
+```bash
+# Full post-pipeline with pre-registration receipt attached
+provenance-tool run \
+  --seed-audio  suno_output.mp3 \
+  --logicx      Session.logicx \
+  --master      final_master.wav \
+  --cert        certs/es256_certs.pem \
+  --key         certs/es256_private.key \
+  --output      signed_master.wav \
+  --pre-reg     pre_reg.json
+```
+
+The signed master's C2PA manifest will include both the pre-registration receipt (proving your audio pre-dates Suno) and the session audit.
+
+### Workflow A: Post-Suno Only
+
+If the **Suno export is the starting point** (no prior audio to register):
 
 ```bash
 provenance-tool run \
-  --seed-audio  /path/to/suno_export.mp3 \
-  --logicx      /path/to/Session.logicx \
-  --master      /path/to/final_master.wav \
+  --seed-audio  suno_export.mp3 \
+  --logicx      Session.logicx \
+  --master      final_master.wav \
   --cert        certs/es256_certs.pem \
   --key         certs/es256_private.key \
   --output      signed_master.wav
 ```
 
-### Step-by-Step
+### Step-by-Step (manual pipeline)
 
 ```bash
-# 1. Extract seed metadata from the Suno file
-provenance-tool seed-extract suno_export.mp3 > seed.json
+# 0. (Optional) Pre-register your audio before Suno
+provenance-tool pre-register my_recording.wav > pre_reg.json
 
-# 2. Audit the Logic Pro session (pass --seed-hash for track classification)
-HASH=$(python3 -c "import hashlib,sys; h=hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest(); print(h)" suno_export.mp3)
+# 1. Extract seed metadata from the Suno output
+provenance-tool seed-extract suno_output.mp3 > seed.json
+
+# 2. Audit the Logic Pro session
+HASH=$(python3 -c "import hashlib,sys; h=hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest(); print(h)" suno_output.mp3)
 provenance-tool daw-audit Session.logicx --seed-hash "$HASH" > session.json
 
-# 3. Build the provenance record
-provenance-tool loopback --seed seed.json --session session.json > provenance.json
+# 3. Build the provenance record (attach pre-reg if you have one)
+provenance-tool loopback --seed seed.json --session session.json --pre-reg pre_reg.json > provenance.json
 
 # 4. Sign the master
 provenance-tool sign \
   --master      final_master.wav \
-  --seed-audio  suno_export.mp3 \
+  --seed-audio  suno_output.mp3 \
   --provenance  provenance.json \
   --cert        certs/es256_certs.pem \
   --key         certs/es256_private.key \
@@ -174,9 +205,10 @@ No subjective data (track names, lyrics, plugin names, artist info) is included 
 ```
 src/provenance/
 ├── schemas.py           # TypedDict contracts for all data flowing between modules
+├── pre_register.py      # Fingerprints your audio before Suno upload
 ├── seed_extractor.py    # Parses Suno MP3/WAV metadata (ID3 + RIFF), computes seed ID
 ├── daw_auditor.py       # Parses .logicx bundles (plist + binary FourCC scanning)
-├── loopback_engine.py   # Marries seed ↔ session, computes deterministic loopback ID
+├── loopback_engine.py   # Marries seed ↔ session (+pre-reg), computes loopback ID
 ├── c2pa_signer.py       # Builds and signs C2PA manifest via c2pa-python
 └── cli.py               # CLI entry point with subcommands
 ```

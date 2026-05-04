@@ -119,6 +119,53 @@ class TestDAWAuditor:
 
 
 # ======================================================================
+# Pre-Register
+# ======================================================================
+
+
+class TestPreRegister:
+    def test_pre_register_mp3(self, synthetic_mp3: Path) -> None:
+        from provenance.pre_register import pre_register
+
+        result = pre_register(synthetic_mp3)
+        assert "error" not in result
+        assert len(result["pre_reg_id"]) == 16
+        assert len(result["original_file_hash"]) == 64
+        assert result["original_format"] == "mp3"
+        assert result["registered_at"]  # non-empty ISO timestamp
+
+    def test_pre_register_wav(self, synthetic_wav: Path) -> None:
+        from provenance.pre_register import pre_register
+
+        result = pre_register(synthetic_wav)
+        assert "error" not in result
+        assert result["original_format"] == "wav"
+
+    def test_pre_register_missing_file(self, tmp_dir: Path) -> None:
+        from provenance.pre_register import pre_register
+
+        result = pre_register(tmp_dir / "ghost.wav")
+        assert result["error"].startswith("File not found")
+        assert result["module"] == "pre_register"
+
+    def test_pre_register_unsupported(self, tmp_dir: Path) -> None:
+        from provenance.pre_register import pre_register
+
+        bad = tmp_dir / "song.ogg"
+        bad.write_bytes(b"\x00")
+        result = pre_register(bad)
+        assert "Unsupported format" in result["error"]
+
+    def test_deterministic_hash(self, synthetic_mp3: Path) -> None:
+        from provenance.pre_register import pre_register
+
+        r1 = pre_register(synthetic_mp3)
+        r2 = pre_register(synthetic_mp3)
+        assert r1["pre_reg_id"] == r2["pre_reg_id"]
+        assert r1["original_file_hash"] == r2["original_file_hash"]
+
+
+# ======================================================================
 # Loopback Engine
 # ======================================================================
 
@@ -190,3 +237,32 @@ class TestLoopbackEngine:
         # Should succeed with a warning (non-fatal)
         assert "error" not in result
         assert result["session"]["human_led_count"] == 0
+
+    def test_with_pre_registration(self) -> None:
+        from provenance.loopback_engine import build_provenance
+
+        pre_reg = {
+            "pre_reg_id": "1234567890abcdef",
+            "original_file_hash": "b" * 64,
+            "original_format": "wav",
+            "registered_at": "2026-04-14T12:00:00+00:00",
+            "metadata_fields": {},
+        }
+        result = build_provenance(
+            self._make_seed_result(),
+            self._make_session_result(),
+            pre_registration=pre_reg,
+        )
+        assert "error" not in result
+        assert "pre_registration" in result
+        assert result["pre_registration"]["pre_reg_id"] == "1234567890abcdef"
+
+    def test_without_pre_registration_omits_field(self) -> None:
+        from provenance.loopback_engine import build_provenance
+
+        result = build_provenance(
+            self._make_seed_result(),
+            self._make_session_result(),
+        )
+        assert "error" not in result
+        assert "pre_registration" not in result

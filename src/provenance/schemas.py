@@ -60,11 +60,20 @@ class SessionSection(TypedDict):
     programmed_count: int
 
 
-class ProvenanceRecord(TypedDict):
+class PreRegistration(TypedDict):
+    pre_reg_id: str
+    original_file_hash: str
+    original_format: str
+    registered_at: str
+    metadata_fields: dict[str, str]
+
+
+class ProvenanceRecord(TypedDict, total=False):
     loopback_id: str
     seed: SeedSection
     session: SessionSection
     provenance_timestamp: str
+    pre_registration: PreRegistration
 
 
 class ErrorResult(TypedDict):

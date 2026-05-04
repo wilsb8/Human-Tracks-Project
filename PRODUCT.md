@@ -8,10 +8,33 @@ Strictly mechanical provenance. No subjective, biographical, or aesthetic data e
 
 ---
 
+## Two Workflows
+
+### Workflow A — Post-Suno (Suno output as seed)
+You download a Suno export and build on it in Logic Pro:
+```
+Suno export → seed-extract → daw-audit → loopback → sign
+```
+
+### Workflow B — Pre-Suno (your audio as seed)
+You fingerprint your own audio *before* uploading it to Suno, then run the rest of the pipeline on the Suno output:
+```
+your audio → pre-register → (upload to Suno) → Suno output → seed-extract → daw-audit → loopback --pre-reg → sign
+```
+The `pre-register` receipt proves your audio existed before Suno processing. The receipt is embedded in the final C2PA manifest.
+
+---
+
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌────────────┐
+┌─────────────┐     ┌──────────────┐
+│ Your Audio   │────▶│ Pre-Register │──── pre_reg.json (keep this)
+│ (pre-Suno)   │     │  Module      │
+└─────────────┘     └──────────────┘
+        │                                     │
+        ▼ (upload to Suno)                    │
+┌─────────────┐     ┌──────────────┐     ┌────▼─────────┐     ┌────────────┐
 │ Suno Audio   │────▶│ Seed Extract  │────▶│  Loopback    │────▶│ C2PA Sign  │
 │ (.mp3/.wav)  │     │  Module       │     │  Engine      │     │  Module    │
 └─────────────┘     └──────────────┘     └──────┬───────┘     └────────────┘
@@ -22,16 +45,42 @@ Strictly mechanical provenance. No subjective, biographical, or aesthetic data e
 └─────────────┘     └──────────────┘
 ```
 
-Four modules, one pipeline:
+Five modules, one pipeline:
 
+0. **Pre-Register** *(optional)* — fingerprints your original audio before Suno upload.
 1. **Seed Extractor** — reads a Suno audio file and extracts provenance fields.
 2. **DAW Auditor** — reads a Logic Pro 11 `.logicx` bundle and classifies tracks.
-3. **Loopback Engine** — marries the seed identity to the session audit.
+3. **Loopback Engine** — marries the seed identity to the session audit (and optional pre-registration).
 4. **C2PA Signer** — embeds the loopback result into a signed C2PA manifest on the final master.
 
 ---
 
 ## Module Specifications
+
+### 0. Pre-Register (`pre_register.py`)
+
+**Input:** Path to your original audio file (MP3, WAV, AIF, FLAC).
+
+**Process:**
+- Compute SHA-256 hash of the raw file bytes.
+- Derive `pre_reg_id` as `hash[0:16]`.
+- Record `registered_at` timestamp (UTC ISO-8601).
+- Extract allowed mechanical metadata (same allowlist as Seed Extractor).
+
+**Output schema:**
+```json
+{
+  "pre_reg_id": "string (hex, 16 chars)",
+  "original_file_hash": "SHA-256 hex digest",
+  "original_format": "mp3 | wav | aif | flac",
+  "registered_at": "ISO-8601 string",
+  "metadata_fields": { "key": "value" }
+}
+```
+
+**Usage:** Run this command, save the JSON receipt, then upload the audio to Suno. Pass the receipt to `loopback --pre-reg` later.
+
+---
 
 ### 1. Seed Extractor (`seed_extractor.py`)
 
@@ -164,17 +213,18 @@ Four modules, one pipeline:
 ## CLI Interface
 
 ```
+provenance-tool pre-register <your_audio_file>
 provenance-tool seed-extract <suno_audio_file>
 provenance-tool daw-audit <logicx_bundle>
-provenance-tool loopback --seed <seed_json> --session <session_json>
+provenance-tool loopback --seed <seed_json> --session <session_json> [--pre-reg <pre_reg_json>]
 provenance-tool sign --master <audio_file> --provenance <provenance_json> \
                      --cert <cert.pem> --key <key.pem> --output <signed_file>
 provenance-tool run --seed-audio <suno_file> --logicx <bundle> \
                     --master <audio_file> --cert <cert.pem> --key <key.pem> \
-                    --output <signed_file>
+                    --output <signed_file> [--pre-reg <pre_reg_json>]
 ```
 
-`run` executes the full pipeline in one invocation.
+`pre-register` is run *before* uploading to Suno. `run` executes the full post-Suno pipeline in one invocation.
 
 ---
 

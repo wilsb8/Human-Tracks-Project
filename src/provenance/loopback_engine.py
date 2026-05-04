@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from provenance.schemas import (
     ErrorResult,
+    PreRegistration,
     ProvenanceRecord,
     SeedResult,
     SeedSection,
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 def build_provenance(
     seed: SeedResult,
     session: SessionResult,
+    pre_registration: PreRegistration | None = None,
 ) -> ProvenanceRecord | ErrorResult:
     """Combine seed extraction and session audit into a single provenance record.
 
@@ -30,6 +32,10 @@ def build_provenance(
         Output of ``seed_extractor.extract_seed``.
     session:
         Output of ``daw_auditor.audit_session``.
+    pre_registration:
+        Optional output of ``pre_register.pre_register``.  When provided,
+        the pre-registration receipt is embedded in the provenance record,
+        establishing that the original audio existed *before* Suno processing.
 
     Returns
     -------
@@ -68,7 +74,7 @@ def build_provenance(
 
         meta = session["session_metadata"]
 
-        return ProvenanceRecord(
+        record = ProvenanceRecord(
             loopback_id=loopback_id,
             seed=SeedSection(
                 seed_id=seed["seed_id"],
@@ -88,6 +94,12 @@ def build_provenance(
             ),
             provenance_timestamp=datetime.now(timezone.utc).isoformat(),
         )
+
+        # Attach pre-registration if provided
+        if pre_registration is not None:
+            record["pre_registration"] = pre_registration
+
+        return record
 
     except Exception as exc:
         logger.exception("loopback_engine failed")

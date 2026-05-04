@@ -30,6 +30,15 @@ def _is_error(result: dict) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def cmd_pre_register(args: argparse.Namespace) -> None:
+    from provenance.pre_register import pre_register
+
+    result = pre_register(args.audio_file)
+    if _is_error(result):
+        _fail(result)
+    print(_canonical_json(result))
+
+
 def cmd_seed_extract(args: argparse.Namespace) -> None:
     from provenance.seed_extractor import extract_seed
 
@@ -54,7 +63,10 @@ def cmd_loopback(args: argparse.Namespace) -> None:
 
     seed = json.loads(Path(args.seed).read_text())
     session = json.loads(Path(args.session).read_text())
-    result = build_provenance(seed, session)
+    pre_reg = None
+    if getattr(args, "pre_reg", None):
+        pre_reg = json.loads(Path(args.pre_reg).read_text())
+    result = build_provenance(seed, session, pre_registration=pre_reg)
     if _is_error(result):
         _fail(result)
     print(_canonical_json(result))
@@ -79,11 +91,16 @@ def cmd_sign(args: argparse.Namespace) -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> None:
-    """Full pipeline: seed-extract → daw-audit → loopback → sign."""
+    """Full pipeline: [pre-register →] seed-extract → daw-audit → loopback → sign."""
     from provenance.c2pa_signer import sign_master
     from provenance.daw_auditor import audit_session
     from provenance.loopback_engine import build_provenance
     from provenance.seed_extractor import extract_seed
+
+    # 0. Optional pre-registration
+    pre_reg = None
+    if getattr(args, "pre_reg", None):
+        pre_reg = json.loads(Path(args.pre_reg).read_text())
 
     # 1. Seed extraction
     seed = extract_seed(args.seed_audio)
@@ -96,7 +113,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         _fail(session)
 
     # 3. Loopback
-    provenance = build_provenance(seed, session)
+    provenance = build_provenance(seed, session, pre_registration=pre_reg)
     if _is_error(provenance):
         _fail(provenance)
 
@@ -131,6 +148,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # -- pre-register --
+    p_prereg = sub.add_parser("pre-register",
+                              help="Fingerprint your audio before uploading to Suno")
+    p_prereg.add_argument("audio_file", help="Path to your original audio file")
+    p_prereg.set_defaults(func=cmd_pre_register)
+
     # -- seed-extract --
     p_seed = sub.add_parser("seed-extract", help="Extract seed metadata from a Suno audio file")
     p_seed.add_argument("audio_file", help="Path to Suno MP3 or WAV file")
@@ -147,6 +170,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_loop = sub.add_parser("loopback", help="Combine seed and session into provenance record")
     p_loop.add_argument("--seed", required=True, help="Path to seed JSON")
     p_loop.add_argument("--session", required=True, help="Path to session JSON")
+    p_loop.add_argument("--pre-reg", dest="pre_reg", default=None,
+                        help="Path to pre-registration JSON (from pre-register)")
     p_loop.set_defaults(func=cmd_loopback)
 
     # -- sign --
@@ -169,6 +194,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--key", required=True, help="Path to private key (PEM)")
     p_run.add_argument("--output", required=True, help="Output path for signed file")
     p_run.add_argument("--ta-url", default="", help="Time Stamp Authority URL")
+    p_run.add_argument("--pre-reg", dest="pre_reg", default=None,
+                        help="Path to pre-registration JSON (from pre-register)")
     p_run.set_defaults(func=cmd_run)
 
     return parser
