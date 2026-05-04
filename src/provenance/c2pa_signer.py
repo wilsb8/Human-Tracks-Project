@@ -7,8 +7,6 @@ import logging
 from pathlib import Path
 from typing import Union
 
-import c2pa
-
 from provenance.schemas import ErrorResult, ProvenanceRecord
 
 logger = logging.getLogger(__name__)
@@ -65,6 +63,8 @@ def sign_master(
             return ErrorResult(error=f"{label} not found: {p}", module="c2pa_signer")
 
     try:
+        import c2pa  # lazy import — requires Python >= 3.10
+
         mime = _mime_for(master)
         seed_mime = _mime_for(seed_audio)
 
