@@ -1,12 +1,18 @@
 # Human-Tracks-Project: Digital Provenance & Metadata Loopback
 
-The Mission
+## The Mission
 
-To provide an ironclad, mechanical "Proof of Work" for professional musicians working with AI-generated audio seeds. This project delineates years of human musicianship from low-effort AI "slop" by establishing a cryptographically signed chain of custody from the initial audio seed to the final master export.
+To provide an ironclad, mechanical "Proof of Work" for professional musicians working with AI-generated audio seeds. This project delineates 42 years of human musicianship from low-effort AI "slop" by establishing a cryptographically signed chain of custody from the initial audio seed to the final master export.
 
-# Digital Provenance & Metadata Loopback Tool
+## How It Works
 
-A Python CLI that produces a verifiable Proof-of-Work manifest linking an AI-generated audio seed (Suno) to a DAW session audit (Logic Pro), signed with a [C2PA](https://c2pa.org/) content credential.
+The tool functions as a "Black Box" flight recorder for your production process:
+
+- **Module 0: Pre-Stamp** — Registers your creative intent before generation, assigning a unique Handshake ID to the project.
+- **Module 1: Seed Extractor** — Scans the resulting Suno file to extract the unique Seed ID and origin timestamp while stripping subjective metadata.
+- **Module 2: DAW Auditor** — Parses Logic Pro 11 session data to objectively classify tracks as Human-Led (recorded audio) or Seed.
+- **Module 3: Loopback Engine** — Marries the seed identity to the session audit, verifying that human labor was the primary driver of the final track.
+- **Module 4: C2PA Signer** — Bakes the entire provenance record into a signed C2PA manifest embedded in the final master.
 
 ## Prerequisites
 
