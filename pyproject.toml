@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "provenance-tool"
+version = "0.1.0"
+description = "Digital Provenance & Metadata Loopback for hybrid music production"
+requires-python = ">=3.10"
+dependencies = [
+    "mutagen>=1.47",
+    "c2pa-python>=0.30",
+]
+
+[project.scripts]
+provenance-tool = "provenance.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
